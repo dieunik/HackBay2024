@@ -52,14 +52,15 @@ class TrendtoursAllOffersSpider(scrapy.Spider):
                 country_data = Country(country_name, response.urljoin(country_link))
                 found_countries.append(country_data)
 
-    def parse_country(self, response):
+    @staticmethod
+    def parse_country(response):
         country = response.meta['country']
         offers = []
-        for offer in response.xpath('/html/body/div[5]/div'):
-            offer_name = offer.xpath('a/div/div[2]/div/div[1]/div[1]/p/text()').get()
+        for offer in response.css('a.product-teaser__outer'):
+            offer_name = offer.xpath('div/div[2]/div/div[1]/div[1]/p/text()').get()
             offer_link = offer.css('a::attr(href)').get()
             offers.append(Offer(offer_name, response.urljoin(offer_link)))
-        
+
         country.offers = offers
         yield {
             'country': str(country),
