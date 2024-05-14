@@ -1,31 +1,86 @@
 import scrapy
 
 
-class TrendtoursSpider(scrapy.Spider):
-    name = 'trendtours'
-    allowed_domains = ['trendtours.de']
+class Offer:
+    name: str
+    url: str
+    description: str
+
+    def __init__(self, name, url, description):
+        self.name = name
+        self.url = url
+        self.description = description
+    
+    def __str__(self):
+        return self.name
+    
+    def to_dict(self):
+        return {'name': self.name, 'url': self.url, 'description': self.description}
+
+
+class Country:
+    name: str
+    url: str
+    offers: list[Offer]
+
+    def __init__(self, name, url):
+        self.name = name
+        self.url = url
+
+    def __str__(self):
+        return self.name
+    
+    def to_dict(self):
+        return {'name': self.name, 'url': self.url}
+
+
+class Trendtours(scrapy.Spider):
+    name = "trendtours"
+    allowed_domains = ["trendtours.de"]
     start_urls = ['https://www.trendtours.de/reiseziele']
 
     def parse(self, response, **kwargs):
-        top_countries_found = []
-        countries_found = []
+        top_countries_found: list[Country] = []
+        countries_found: list[Country] = []
 
         for country_lists in response.css('div.countries'):
-            header_text = country_lists.css('h2::text').get()
-            if header_text == "Top-Reiseziele":
-                self.parse_countries(country_lists, top_countries_found)
+            if country_lists.css('h2::text').get() == "Top-Reiseziele":
+                self.parse_country_list(country_lists, top_countries_found, response)
             else:
-                self.parse_countries(country_lists, countries_found)
+                self.parse_country_list(country_lists, countries_found, response)
 
-        yield {
-            'top_countries_found': top_countries_found,
-            'countries_found': countries_found
+        for country in top_countries_found + countries_found:
+            yield scrapy.Request(url=country.url, callback=self.parse_country, meta={'country': country})
+
+    @staticmethod
+    def parse_country_list(div, found_countries, response):
+        for country in div.css('div.card.teaser.countryTeaser.border-0'):
+            country_name = country.css('a div.countryTeaser-img-overlay.teaser-img-overlay::text').get()
+            country_link = country.css('a::attr(href)').get()
+            if not (country_name and country_link):
+                raise Exception("Each country should have a name and href. The website code might have changed")
+            else:
+                country_data = Country(country_name, response.urljoin(country_link))
+                found_countries.append(country_data)
+
+    @staticmethod
+    def parse_country(response):
+        country = response.meta['country']
+        offers = []
+        for offer in response.css('a.product-teaser__outer'):
+            offer_name = offer.xpath('div/div[2]/div/div[1]/div[1]/p/text()').get()
+            offer_short_description = offer.xpath('div/div[2]/div/div[1]/div[2]/p/text()').get()
+            offer_link = offer.css('a::attr(href)').get()
+            offers.append(Offer(offer_name, response.urljoin(offer_link), offer_short_description))
+
+        country.offers = offers
+        return {
+            'country': str(country),
+            'offers': [offer.to_dict() for offer in offers]
         }
 
     @staticmethod
-    def parse_countries(div, found_countries):
-        for country in div.css('div.card.teaser.countryTeaser.border-0'):
-            title = country.css('a div.countryTeaser-img-overlay.teaser-img-overlay::text').get()
-            if title:
-                found_countries.append(title)
-                
+    def parse_offer(response):
+        # could be implemented in the future to add more details about the travel, but I think it is sufficient to just
+        # link the original website
+        raise NotImplementedError
