@@ -5,9 +5,10 @@ class Offer:
     name: str
     url: str
 
-    def __init__(self, name, url):
+    def __init__(self, name, url, description):
         self.name = name
         self.url = url
+        self.description = description
 
 
 class Country:
@@ -58,11 +59,18 @@ class TrendtoursAllOffersSpider(scrapy.Spider):
         offers = []
         for offer in response.css('a.product-teaser__outer'):
             offer_name = offer.xpath('div/div[2]/div/div[1]/div[1]/p/text()').get()
+            offer_short_description = offer.xpath('div/div[2]/div/div[1]/div[2]/p/text()').get()
             offer_link = offer.css('a::attr(href)').get()
-            offers.append(Offer(offer_name, response.urljoin(offer_link)))
+            offers.append(Offer(offer_name, response.urljoin(offer_link), offer_short_description))
 
         country.offers = offers
         yield {
             'country': str(country),
-            'offers': [{'name': offer.name, 'url': offer.url} for offer in offers]
+            'offers': [{'name': offer.name, 'url': offer.url, 'description': offer.description} for offer in offers]
         }
+
+    @staticmethod
+    def parse_offer(response):
+        # could be implemented in the future to add more details about the travel, but I think it is sufficient to just
+        # link the original website
+        raise NotImplementedError
