@@ -1,5 +1,4 @@
 import scrapy
-from enum import StrEnum
 
 
 class Offer:
@@ -35,27 +34,34 @@ class TrendtoursAllOffersSpider(scrapy.Spider):
 
         for country_lists in response.css('div.countries'):
             if country_lists.css('h2::text').get() == "Top-Reiseziele":
-                self.parse_country_list(country_lists, top_countries_found)
+                self.parse_country_list(country_lists, top_countries_found, response)
             else:
-                self.parse_country_list(country_lists, countries_found)
+                self.parse_country_list(country_lists, countries_found, response)
 
-        yield {
-            'top_countries_found': [str(country) for country in top_countries_found],
-            'countries_found': [str(country) for country in countries_found]
-        }
+        for country in top_countries_found + countries_found:
+            yield scrapy.Request(url=country.url, callback=self.parse_country, meta={'country': country})
 
     @staticmethod
-    def parse_country_list(div, found_countries):
-
+    def parse_country_list(div, found_countries, response):
         for country in div.css('div.card.teaser.countryTeaser.border-0'):
             country_name = country.css('a div.countryTeaser-img-overlay.teaser-img-overlay::text').get()
             country_link = country.css('a::attr(href)').get()
             if not (country_name and country_link):
                 raise Exception("Each country should have a name and href. The website code might have changed")
             else:
-                country_data = Country(country_name, country.urljoin(country_link))
+                country_data = Country(country_name, response.urljoin(country_link))
                 found_countries.append(country_data)
 
-    def parse_country(self, country: Country):
-        pass
+    def parse_country(self, response):
+        country = response.meta['country']
+        offers = []
+        for offer in response.xpath('/html/body/div[5]/div'):
+            offer_name = offer.xpath('a/div/div[2]/div/div[1]/div[1]/p/text()').get()
+            offer_link = offer.css('a::attr(href)').get()
+            offers.append(Offer(offer_name, response.urljoin(offer_link)))
         
+        country.offers = offers
+        yield {
+            'country': str(country),
+            'offers': [{'name': offer.name, 'url': offer.url} for offer in offers]
+        }
