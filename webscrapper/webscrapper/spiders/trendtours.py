@@ -1,27 +1,9 @@
 import scrapy
 
 
-class Offer:
-    name: str
-    url: str
-    description: str
-
-    def __init__(self, name, url, description):
-        self.name = name
-        self.url = url
-        self.description = description
-    
-    def __str__(self):
-        return self.name
-    
-    def to_dict(self):
-        return {'name': self.name, 'url': self.url, 'description': self.description}
-
-
 class Country:
     name: str
     url: str
-    offers: list[Offer]
 
     def __init__(self, name, url):
         self.name = name
@@ -34,10 +16,30 @@ class Country:
         return {'name': self.name, 'url': self.url}
 
 
+class Offer:
+    name: str
+    url: str
+    description: str
+    country: str
+
+    def __init__(self, name, url, description, country):
+        self.name = name
+        self.url = url
+        self.description = description
+        self.country = country
+    
+    def __str__(self):
+        return self.name
+    
+    def to_dict(self):
+        return {'name': self.name, 'url': self.url, 'description': self.description, 'country': self.country}
+
+
 class Trendtours(scrapy.Spider):
     name = "trendtours"
     allowed_domains = ["trendtours.de"]
     start_urls = ['https://www.trendtours.de/reiseziele']
+    offers_found: list[Offer] = []
 
     def parse(self, response, **kwargs):
         top_countries_found: list[Country] = []
@@ -49,8 +51,10 @@ class Trendtours(scrapy.Spider):
             else:
                 self.parse_country_list(country_lists, countries_found, response)
 
-        for country in top_countries_found + countries_found:
-            yield scrapy.Request(url=country.url, callback=self.parse_country, meta={'country': country})
+        for country in countries_found:
+            scrapy.Request(url=country.url, callback=self.parse_country, meta={'country': country})
+            
+        yield {'offers': [offer.to_dict() for offer in self.offers_found]}
 
     @staticmethod
     def parse_country_list(div, found_countries, response):
@@ -63,21 +67,15 @@ class Trendtours(scrapy.Spider):
                 country_data = Country(country_name, response.urljoin(country_link))
                 found_countries.append(country_data)
 
-    @staticmethod
-    def parse_country(response):
+    def parse_country(self, response):
         country = response.meta['country']
-        offers = []
         for offer in response.css('a.product-teaser__outer'):
             offer_name = offer.xpath('div/div[2]/div/div[1]/div[1]/p/text()').get()
             offer_short_description = offer.xpath('div/div[2]/div/div[1]/div[2]/p/text()').get()
             offer_link = offer.css('a::attr(href)').get()
-            offers.append(Offer(offer_name, response.urljoin(offer_link), offer_short_description))
-
-        country.offers = offers
-        return {
-            'country': str(country),
-            'offers': [offer.to_dict() for offer in offers]
-        }
+            
+            found_offer = Offer(offer_name, offer_link, offer_short_description, str(country))
+            self.offers_found.append(found_offer)
 
     @staticmethod
     def parse_offer(response):
