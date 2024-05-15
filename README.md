@@ -24,6 +24,7 @@ https://www.figma.com/file/LYqvwEqn4322a11Ue4Q4AH/Leitner-Solution-Prototype?typ
   name VARCHAR(255) NOT NULL,
   url VARCHAR(255) NOT NULL,
   description TEXT,
+  country VARCHAR(255),
   add_date DATE NOT NULL,
   remove_date DATE
   );
