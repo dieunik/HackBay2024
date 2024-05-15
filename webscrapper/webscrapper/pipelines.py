@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime
 
 import mariadb
 import sys
@@ -17,7 +16,14 @@ from itemadapter import ItemAdapter
 class MariaDBPipeline:
     conn: mariadb.Connection
     hackbay_db: mariadb.Cursor
+    untouched_offer_ids: list[int]
 
+    def get_highest_offer_id(self):
+        self.hackbay_db.execute("SELECT MAX(id) FROM offer")
+        result = self.hackbay_db.fetchone()
+        highest_id = result[0] if result[0] is not None else 0
+        return highest_id
+    
     def open_spider(self, spider):
         try:
             self.conn = mariadb.connect(
@@ -34,9 +40,25 @@ class MariaDBPipeline:
 
         # Get Cursor
         self.hackbay_db = self.conn.cursor()
+        
+        self.untouched_offer_ids = list(range(self.get_highest_offer_id()+1))
 
     def close_spider(self, spider):
         # called when the spider is closed
+        for id in self.untouched_offer_ids:
+            self.hackbay_db.execute("""
+            UPDATE offer
+            SET remove_date = NOW()
+            WHERE id = ?
+            AND remove_date = NULL
+            """, (id,))
+    
+            # Commit der Änderungen
+            self.conn.commit()
+
+            # Logge die Änderung
+            logging.info(f"remove_date updated for ID: {id}")
+        
         self.hackbay_db.close()
         self.conn.close()
 
@@ -58,6 +80,8 @@ class MariaDBPipeline:
 
         if result:
             logging.info("Offer already in DB")
+            self.untouched_offer_ids.remove(result[0])
+            
         if not result:
             # add the offer
             self.hackbay_db.execute("""
